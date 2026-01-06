@@ -1,0 +1,11 @@
+backend/venv    
+backend/data/activities.json    
+backend/data/codes.json 
+backend/data/download_tokens.json   
+backend/data/downloads.json
+backend/data/pending_users.json
+backend/data/projects.json  
+backend/data/users.json
+backend/.env  
+backend/uploads/
+backend/data/*.db
