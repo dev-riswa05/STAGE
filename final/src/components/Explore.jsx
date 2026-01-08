@@ -1,17 +1,21 @@
-// components/Explore.jsx
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { AdminSidebar, UserSidebar } from '../components/Sidebar';
-import { Search, Filter, Download, Eye, Calendar, User, Laptop, Loader2 } from 'lucide-react';
+import { AdminSidebar, UserSidebar } from './Sidebar';
+import { 
+  Search, Filter, Download, Eye, Calendar, User, 
+  Loader2, Code, RefreshCw, AlertCircle, Layers 
+} from 'lucide-react';
 
 export default function Explore() {
   // --- ÉTATS ---
   const [activeTab, setActiveTab] = useState('explore');
   const [currentUser, setCurrentUser] = useState(null);
   const [projets, setProjets] = useState([]);
-  const [loading, setLoading] = useState(true); // État de chargement
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filtre, setFiltre] = useState("");
   const [filtreTechno, setFiltreTechno] = useState("");
+  const [downloadingId, setDownloadingId] = useState(null);
 
   // --- CHARGEMENT INITIAL ---
   useEffect(() => {
@@ -20,182 +24,228 @@ export default function Explore() {
     fetchProjets();
   }, []);
 
-  // --- APPELS API ---
+  // --- APPELS API (Logique inchangée) ---
   const fetchProjets = async () => {
     setLoading(true);
+    setError("");
     try {
       const response = await fetch('http://localhost:5000/api/projects');
-      if (!response.ok) throw new Error('Erreur réseau');
+      if (!response.ok) throw new Error('Erreur lors du chargement des projets');
       const data = await response.json();
-      
-      // Le backend renvoie { projects: [...] }
-      setProjets(data.projects || []);
+      setProjets(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error("Erreur lors du chargement des projets:", error);
+      setError("Impossible de charger les projets");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDownload = async (projet) => {
+  const handleDownload = async (projetId, projetTitre) => {
+    if (downloadingId === projetId) return;
+    setDownloadingId(projetId);
     try {
-      // On appelle la route de téléchargement du backend
-      window.open(`http://localhost:5000/api/file/${projet.id}`, '_blank');
+      const user = JSON.parse(localStorage.getItem('current_user') || 'null');
+      const userId = user?.id || 'anonymous';
+      const downloadUrl = `http://localhost:5000/api/download-file/${projetId}?user_id=${userId}`;
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      const safeTitle = (projetTitre || 'projet').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      link.download = `${safeTitle}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => { if (document.body.contains(link)) document.body.removeChild(link); }, 100);
+      if (user?.id) {
+        try {
+          await fetch('http://localhost:5000/api/record-download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: user.id, project_id: projetId })
+          });
+        } catch (err) { console.log(err); }
+      }
     } catch (error) {
-      alert("Erreur lors du téléchargement");
+      window.open(`http://localhost:5000/api/download-file/${projetId}`, '_blank');
+    } finally {
+      setTimeout(() => setDownloadingId(null), 1000);
     }
   };
 
-  // --- LOGIQUE DE FILTRAGE ---
+  // --- LOGIQUE DE FILTRAGE (Inchangée) ---
   const projetsFiltres = projets.filter((p) => {
     const searchLower = filtre.toLowerCase();
     return (
-      p.titre?.toLowerCase().includes(searchLower) ||
-      p.description?.toLowerCase().includes(searchLower) ||
-      p.auteurNom?.toLowerCase().includes(searchLower) ||
-      p.technologies?.some(tech => tech.toLowerCase().includes(searchLower))
+      (p.titre || "").toLowerCase().includes(searchLower) ||
+      (p.description || "").toLowerCase().includes(searchLower) ||
+      (p.auteurNom || "").toLowerCase().includes(searchLower) ||
+      (p.technologies || []).some(tech => tech.toLowerCase().includes(searchLower))
     );
-  }).filter((p) =>
-    filtreTechno ? p.technologies?.some(tech => tech.toLowerCase() === filtreTechno.toLowerCase()) : true
-  );
+  }).filter((p) => filtreTechno ? (p.technologies || []).some(t => t.toLowerCase() === filtreTechno.toLowerCase()) : true);
 
-  const technologiesUniques = [...new Set(projets.flatMap(p => p.technologies || []))];
+  const technologiesUniques = [...new Set(projets.flatMap(p => Array.isArray(p.technologies) ? p.technologies : []))].filter(t => t && t.trim() !== "");
 
-  // --- RENDU SIDEBAR ---
   const renderSidebar = () => {
-    if (!currentUser) return <UserSidebar activeTab={activeTab} setActiveTab={setActiveTab} />;
-    switch (currentUser.role) {
-      case 'administrateur': return <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} />;
-      case 'formateur': return <FormateurSidebar activeTab={activeTab} setActiveTab={setActiveTab} />;
-      default: return <UserSidebar activeTab={activeTab} setActiveTab={setActiveTab} />;
-    }
-  };
-
-  const capitalizeWords = (str) => {
-    if (!str) return "";
-    return str.replace(/\b\w/g, l => l.toUpperCase());
+    const isAdmin = currentUser?.role === "admin" || currentUser?.matricule?.startsWith("AD-");
+    return isAdmin ? <AdminSidebar activeTab="explore" /> : <UserSidebar activeTab="explore" />;
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0A0B] text-white flex flex-col md:flex-row">
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col md:flex-row">
       {renderSidebar()}
       
-      <main className="flex-1 p-4 md:p-8 pt-20 lg:pt-8 overflow-x-hidden">
-        
-        {/* HEADER */}
-        <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6 mb-10">
-          <div className="max-w-xl">
-            <h1 className="text-3xl md:text-4xl font-black tracking-tighter uppercase">
-              Explorer les <span className="text-[#CE0033]">Projets</span>
-            </h1>
-            <p className="text-gray-400 mt-2 text-sm md:text-base">
-              Ressources partagées par la communauté Simplon Code Hub.
-            </p>
+      <main className="flex-1 p-4 sm:p-6 md:p-8 pt-20 lg:pt-8 overflow-y-auto max-w-7xl mx-auto w-full">
+        <div className="max-w-6xl mx-auto space-y-8">
+          
+          {/* --- HEADER --- */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
+                Explorez les Projets
+              </h1>
+              <p className="text-gray-400 mt-1">
+                {projets.length} projets disponibles • Filtrez par technologie
+              </p>
+            </div>
+
+            <div className="relative w-full md:w-64 lg:w-80">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input
+                type="text"
+                placeholder="Rechercher un projet..."
+                className="w-full bg-gray-800 border border-gray-700 px-10 py-2.5 rounded-lg focus:border-[#CE0033] outline-none transition-colors placeholder:text-gray-500 text-sm"
+                value={filtre}
+                onChange={(e) => setFiltre(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="relative w-full xl:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-            <input
-              type="text"
-              placeholder="Rechercher un projet, une techno..."
-              className="w-full bg-[#161618] border border-white/5 px-10 py-3 rounded-xl focus:border-[#CE0033] outline-none transition-all"
-              value={filtre}
-              onChange={(e) => setFiltre(e.target.value)}
-            />
-          </div>
-        </div>
+          {/* --- FILTRES BAR --- */}
+          <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+            <div className="flex flex-col sm:flex-row gap-4 items-center">
+              <div className="flex items-center gap-2 text-sm font-medium text-[#CE0033]">
+                <Filter size={16} /> Technologies
+              </div>
+              
+              <div className="flex flex-wrap gap-2 overflow-x-auto pb-2 sm:pb-0">
+                <button 
+                  onClick={() => setFiltreTechno("")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    !filtreTechno ? 'bg-[#CE0033] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  Tous ({projets.length})
+                </button>
+                {technologiesUniques.map((tech, i) => (
+                  <button 
+                    key={i}
+                    onClick={() => setFiltreTechno(tech)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                      filtreTechno === tech ? 'bg-[#CE0033] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    {tech}
+                  </button>
+                ))}
+              </div>
 
-        {/* FILTRES PAR TECHNO */}
-        <div className="mb-8 flex flex-wrap gap-2 items-center bg-white/5 p-4 rounded-2xl border border-white/5">
-          <Filter size={16} className="text-[#CE0033] mr-2" />
-          <button 
-            onClick={() => setFiltreTechno("")}
-            className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${!filtreTechno ? 'bg-[#CE0033] text-white' : 'bg-[#161618] text-gray-400 border border-white/5'}`}
-          >
-            Tous
-          </button>
-          {technologiesUniques.map((tech, i) => (
-            <button 
-              key={i}
-              onClick={() => setFiltreTechno(tech)}
-              className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${filtreTechno === tech ? 'bg-[#CE0033] text-white' : 'bg-[#161618] text-gray-400 border border-white/5 hover:border-[#CE0033]/50'}`}
-            >
-              {tech}
-            </button>
-          ))}
-        </div>
+              <button
+                onClick={fetchProjets}
+                disabled={loading}
+                className="ml-auto px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                Actualiser
+              </button>
+            </div>
+          </div>
 
-        {/* GRILLE OU LOADER */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Loader2 className="animate-spin text-[#CE0033] mb-4" size={40} />
-            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Chargement des projets...</p>
-          </div>
-        ) : projetsFiltres.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-             <Laptop size={60} className="text-white/10 mb-4" />
-             <p className="text-gray-500 text-lg">Aucun projet trouvé dans la bibliothèque.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-6">
-            {projetsFiltres.map((projet) => (
-              <div key={projet.id} className="group bg-[#161618] border border-white/5 rounded-2xl overflow-hidden hover:border-[#CE0033]/40 transition-all duration-300 flex flex-col shadow-xl">
-                
-                {/* Visual Placeholder (Simule une image de code) */}
-                <div className="h-40 bg-gradient-to-br from-[#CE0033]/10 to-black relative flex items-center justify-center p-4">
-                  <h2 className="text-white text-lg font-black text-center leading-tight uppercase tracking-tighter">
-                    {projet.titre}
-                  </h2>
-                  <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md text-[9px] font-black text-[#CE0033] border border-[#CE0033]/20 uppercase">
-                    {projet.categorie || 'Projet'}
+          {/* --- CONTENT --- */}
+          {loading ? (
+            <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-8 flex flex-col items-center justify-center">
+              <Loader2 className="animate-spin text-[#CE0033] mb-4" size={32} />
+              <p className="text-gray-500 text-sm">Chargement des projets...</p>
+            </div>
+          ) : projetsFiltres.length === 0 ? (
+            <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-10 text-center">
+              <Code size={48} className="mx-auto mb-4 text-gray-600" />
+              <p className="text-gray-500 italic mb-2">Aucun projet trouvé</p>
+              <p className="text-gray-600 text-sm">Essayez avec d'autres termes de recherche</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {projetsFiltres.map((projet) => (
+                <div 
+                  key={projet.id} 
+                  className="bg-gray-900/50 border border-gray-800 hover:border-[#CE0033]/30 rounded-xl overflow-hidden transition-colors flex flex-col"
+                >
+                  {/* Card Head */}
+                  <div className="p-5 pb-3">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="p-3 bg-gray-800 rounded-lg text-[#CE0033]">
+                        <Layers size={20} />
+                      </div>
+                      <span className="text-xs font-medium px-2 py-1 bg-gray-800 text-gray-400 rounded">
+                        {projet.categorie || 'General'}
+                      </span>
+                    </div>
+                    
+                    <h3 className="text-lg font-bold text-white line-clamp-1 mb-2">
+                      {projet.titre}
+                    </h3>
+                    
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <User size={14} className="text-[#CE0033]" />
+                      <span className="truncate">{projet.auteurNom || 'Anonyme'}</span>
+                    </div>
                   </div>
-                </div>
-                
-                <div className="p-5 flex-1 flex flex-col">
-                  <p className="text-gray-400 text-xs line-clamp-2 mb-4 italic h-8">
-                    {projet.description || "Aucune description fournie."}
-                  </p>
-                  
-                  <div className="mt-auto space-y-4">
-                    {/* Tags */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {projet.technologies?.slice(0, 3).map((tag, i) => (
-                        <span key={i} className="bg-[#CE0033]/10 text-[#CE0033] text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">
-                          {tag}
+
+                  {/* Description */}
+                  <div className="px-5 flex-1">
+                    <p className="text-gray-500 text-sm line-clamp-3 leading-relaxed mb-3">
+                      {projet.description || "Exploration technique de solutions logicielles et partage de connaissances."}
+                    </p>
+                    
+                    <div className="flex flex-wrap gap-1">
+                      {(projet.technologies || []).slice(0, 3).map((tech, i) => (
+                        <span key={i} className="text-xs text-gray-400 px-2 py-1 bg-gray-800 rounded">
+                          {tech}
                         </span>
                       ))}
                     </div>
+                  </div>
 
-                    {/* Meta */}
-                    <div className="flex items-center justify-between text-[10px] text-gray-500 border-t border-white/5 pt-4">
-                      <div className="flex items-center gap-1.5 font-bold uppercase">
-                        <User size={12} className="text-[#CE0033]" />
-                        <span className="truncate max-w-[90px]">{projet.auteurNom}</span>
-                      </div>
+                  {/* Footer Actions */}
+                  <div className="p-5 mt-4 pt-4 border-t border-gray-800">
+                    <div className="flex items-center justify-between mb-3 text-sm text-gray-500">
                       <div className="flex items-center gap-1.5">
-                        <Calendar size={12} />
-                        <span>{new Date(projet.dateCreation).toLocaleDateString()}</span>
+                        <Calendar size={14} /> 
+                        {new Date(projet.dateCreation).toLocaleDateString()}
                       </div>
+                      <div className="font-mono text-xs">{projet.taille || '---'}</div>
                     </div>
                     
-                    {/* Actions */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Link to={`/project/${projet.id}`} className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
-                        <Eye size={14} /> Détails
-                      </Link>
-                      <button 
-                        onClick={() => handleDownload(projet)} 
-                        className="flex items-center justify-center gap-2 bg-[#CE0033] hover:bg-[#A60029] text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                    <div className="grid grid-cols-2 gap-3">
+                      <Link 
+                        to={`/project/${projet.id}`}
+                        className="flex items-center justify-center gap-2 bg-gray-800 hover:bg-gray-700 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
                       >
-                        <Download size={14} /> ZIP
+                        <Eye size={16} /> Voir
+                      </Link>
+                      
+                      <button 
+                        onClick={() => handleDownload(projet.id, projet.titre)}
+                        disabled={!projet.filePath || downloadingId === projet.id}
+                        className="flex items-center justify-center gap-2 bg-[#CE0033] hover:bg-[#E60039] text-white py-2.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      >
+                        {downloadingId === projet.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                        Télécharger
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

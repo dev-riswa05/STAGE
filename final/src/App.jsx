@@ -11,11 +11,12 @@ import Submission from "./components/Submission";
 import Explore from "./components/Explore";
 import AdminUsers from "./components/AdminUsers";
 import AdminProjects from "./components/AdminProjects";
-import UserProfile from "./components/UserProfile";
+
 import UserProjectsPage from "./components/UserProjectsPage";
 import ProjectDetails from "./components/ProjectDetails"; 
 import MyDownloads from "./components/MyDownloads";
 import Notifications from "./components/Notifications";
+import Profile from "./components/Profile";
 
 // --- PROTECTION DES ROUTES ---
 // Vérifie si l'utilisateur est connecté et possède le bon rôle
@@ -102,11 +103,7 @@ function AppContent() {
           </ProtectedRoute>
         } />
         
-        <Route path="/user-profile" element={
-          <ProtectedRoute>
-            <UserProfile />
-          </ProtectedRoute>
-        } />
+       
 
         {/* C'est ici que l'utilisateur voit SES propres dépôts via la BDD */}
         <Route path="/user-projects" element={
@@ -127,6 +124,11 @@ function AppContent() {
             <MyDownloads />
           </ProtectedRoute>
         } />
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        } />  
 
         {/* Redirection automatique si la page n'existe pas */}
         <Route path="*" element={<Navigate to="/" replace />} />

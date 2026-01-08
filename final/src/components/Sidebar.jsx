@@ -38,7 +38,7 @@ const UserInfoCard = ({ user, onLogout }) => (
         <div className="overflow-hidden">
           <p className="text-sm font-bold text-white truncate">{user?.pseudo || "Utilisateur"}</p>
           <p className="text-[10px] uppercase tracking-widest text-[#CE0033] font-black italic">
-            {user?.role}
+            {user?.matricule?.startsWith('AD-') ? 'ADMIN' : 'STAGIAIRE'}
           </p>
         </div>
       </div>
@@ -55,6 +55,7 @@ const UserInfoCard = ({ user, onLogout }) => (
 // 3. Structure de base
 const BaseSidebar = ({ children, user, open, setOpen }) => {
   const navigate = useNavigate();
+  
   const handleLogout = () => {
     localStorage.removeItem('current_user');
     navigate('/login');
@@ -104,21 +105,61 @@ export const AdminSidebar = ({ activeTab, setActiveTab }) => {
   const currentUser = JSON.parse(localStorage.getItem('current_user') || '{}');
 
   const nav = (tab, path) => {
-    if(setActiveTab) setActiveTab(tab);
+    if (setActiveTab) setActiveTab(tab);
     navigate(path);
+    setOpen(false);
+  };
+
+  const handleSubmitProject = () => {
+    navigate('/submission');
     setOpen(false);
   };
 
   return (
     <BaseSidebar user={currentUser} open={open} setOpen={setOpen}>
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#CE0033] mb-4 px-4 flex items-center gap-2">
-        <ShieldCheck size={12} /> Administration
-      </p>
-      <SidebarItem icon={BarChart3} label="Tableau de bord" active={activeTab === 'dashboard'} onClick={() => nav('dashboard', '/admin-dashboard')} />
-      <SidebarItem icon={Search} label="Explorer" onClick={() => navigate('/explore')} />
-      <SidebarItem icon={Users} label="Utilisateurs" active={activeTab === 'users'} onClick={() => nav('users', '/admin-users')} />
-      <SidebarItem icon={Folder} label="Gestion Projets" active={activeTab === 'projects'} onClick={() => nav('projects', '/admin-projects')} />
-      <SidebarItem icon={Bell} label="Notifications" active={activeTab === 'notifications'} onClick={() => nav('notifications', '/notifications')} />
+      
+    
+      <SidebarItem 
+        icon={BarChart3} 
+        label="Tableau de bord" 
+        active={activeTab === 'dashboard'} 
+        onClick={() => nav('dashboard', '/admin-dashboard')} 
+      />
+      <SidebarItem 
+        icon={Search} 
+        label="Bibliothèque" 
+        onClick={() => nav('explore', '/explore')} 
+      />
+      <SidebarItem 
+        icon={Users} 
+        label="Utilisateurs" 
+        active={activeTab === 'users'} 
+        onClick={() => nav('users', '/admin-users')} 
+      />
+      <SidebarItem 
+        icon={Folder} 
+        label="Gestion Projets" 
+        active={activeTab === 'projects'} 
+        onClick={() => nav('projects', '/admin-projects')} 
+      />
+      <SidebarItem 
+        icon={Bell} 
+        label="Notifications" 
+        active={activeTab === 'notifications'} 
+        onClick={() => nav('notifications', '/notifications')} 
+      />
+      <SidebarItem 
+        icon={Download} 
+        label="Téléchargements" 
+        active={activeTab === 'downloads'} 
+        onClick={() => nav('downloads', '/downloads')} 
+      />
+      <SidebarItem 
+        icon={User} 
+        label="Profil Personnel" 
+        active={activeTab === 'profile'} 
+        onClick={() => nav('profile', '/profile')} 
+      />
     </BaseSidebar>
   );
 };
@@ -130,8 +171,13 @@ export const UserSidebar = ({ activeTab, setActiveTab }) => {
   const currentUser = JSON.parse(localStorage.getItem('current_user') || '{}');
 
   const nav = (tab, path) => {
-    if(setActiveTab) setActiveTab(tab);
+    if (setActiveTab) setActiveTab(tab);
     navigate(path);
+    setOpen(false);
+  };
+
+  const handleSubmitProject = () => {
+    navigate('/submission');
     setOpen(false);
   };
 
@@ -139,18 +185,43 @@ export const UserSidebar = ({ activeTab, setActiveTab }) => {
     <BaseSidebar user={currentUser} open={open} setOpen={setOpen}>
       <div className="mb-6 px-1">
         <button 
-          onClick={() => navigate('/submission')}
+          onClick={handleSubmitProject}
           className="w-full bg-white text-black hover:bg-[#CE0033] hover:text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-xl active:scale-95"
         >
           <PlusCircle size={16} /> Déposer un Projet
         </button>
       </div>
       
-      <SidebarItem icon={BarChart3} label="Mon Dashboard" active={activeTab === 'dashboard'} onClick={() => nav('dashboard', '/dashboard')} />
-      <SidebarItem icon={Folder} label="Mes Dépôts" active={activeTab === 'projects'} onClick={() => nav('projects', '/user-projects')} />
-      <SidebarItem icon={Search} label="Bibliothèque" active={activeTab === 'explore'} onClick={() => nav('explore', '/explore')} />
-      <SidebarItem icon={Download} label="Téléchargements" active={activeTab === 'downloads'} onClick={() => nav('downloads', '/downloads')} />
-      <SidebarItem icon={User} label="Profil Personnel" active={activeTab === 'profile'} onClick={() => nav('profile', '/profile')} />
+      <SidebarItem 
+        icon={BarChart3} 
+        label="Mon Dashboard" 
+        active={activeTab === 'dashboard'} 
+        onClick={() => nav('dashboard', '/dashboard')} 
+      />
+      <SidebarItem 
+        icon={Folder} 
+        label="Mes Dépôts" 
+        active={activeTab === 'projects'} 
+        onClick={() => nav('projects', '/user-projects')} 
+      />
+      <SidebarItem 
+        icon={Search} 
+        label="Bibliothèque" 
+        active={activeTab === 'explore'} 
+        onClick={() => nav('explore', '/explore')} 
+      />
+      <SidebarItem 
+        icon={Download} 
+        label="Téléchargements" 
+        active={activeTab === 'downloads'} 
+        onClick={() => nav('downloads', '/downloads')} 
+      />
+      <SidebarItem 
+        icon={User} 
+        label="Profil Personnel" 
+        active={activeTab === 'profile'} 
+        onClick={() => nav('profile', '/profile')} 
+      />
     </BaseSidebar>
   );
 };

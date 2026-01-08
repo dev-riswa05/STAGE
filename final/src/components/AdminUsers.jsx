@@ -1,36 +1,84 @@
 // components/AdminUsers.jsx
 import React, { useState, useEffect } from "react";
-import { AdminSidebar } from "./Sidebar"; // Importation de la barre latérale de navigation
-import { Plus, Edit, Trash2, Search, Mail, User, Shield, X, Users, CheckCircle } from 'lucide-react'; // Importation des icônes
+import { AdminSidebar } from "./Sidebar";
+import { Search, Users, Shield, User, ToggleLeft, ToggleRight, Eye, EyeOff } from 'lucide-react';
 
 export default function AdminUsers() {
   // --- ÉTATS (STATES) ---
-  const [activeTab, setActiveTab] = useState('users'); // Gère l'onglet actif dans la sidebar
-  const [users, setUsers] = useState([]); // Stocke la liste complète des utilisateurs
-  const [searchTerm, setSearchTerm] = useState(''); // Gère la valeur du champ de recherche
-  const [showForm, setShowForm] = useState(false); // Gère l'affichage du formulaire (Ajout/Modif)
-  const [editingUser, setEditingUser] = useState(null); // Stocke l'utilisateur en cours de modification
+  const [activeTab, setActiveTab] = useState('users');
+  const [users, setUsers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   
-  // État initial du formulaire
-  const [formData, setFormData] = useState({
-    nom: '',
-    prenom: '',
-    matricule: '',
-    email: '',
-    role: 'apprenant',
-    password: ''
-  });
-
   // --- CYCLE DE VIE ---
   useEffect(() => {
-    // Récupère les données au montage du composant
-    const storedUsers = JSON.parse(localStorage.getItem('simplon_users') || '[]');
-    setUsers(storedUsers);
+    fetchUsers();
+    // Récupérer l'utilisateur courant pour vérifier les permissions
+    const currentUserData = JSON.parse(localStorage.getItem('current_user') || 'null');
+    setCurrentUser(currentUserData);
   }, []);
 
-  // --- LOGIQUE MÉTIER ---
-  
-  // Filtre les utilisateurs dynamiquement selon plusieurs critères
+  // --- FONCTIONS ---
+  const fetchUsers = async () => {
+    try {
+      setIsLoading(true);
+      // Récupérer depuis localStorage (simulation)
+      const storedUsers = JSON.parse(localStorage.getItem('simplon_users') || '[]');
+      
+      // Initialiser isActive à true si non défini (pour compatibilité)
+      const usersWithStatus = storedUsers.map(user => ({
+        ...user,
+        isActive: user.isActive === undefined ? true : user.isActive
+      }));
+      
+      setUsers(usersWithStatus);
+    } catch (error) {
+      console.error('Erreur lors du chargement des utilisateurs:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleUserStatus = async (userId, currentStatus) => {
+    // Vérifier si l'utilisateur courant est admin
+    if (!currentUser || !currentUser.matricule?.startsWith('AD-')) {
+      alert('Seuls les administrateurs peuvent modifier le statut des utilisateurs');
+      return;
+    }
+
+    // Empêcher un administrateur de se désactiver lui-même
+    const userToUpdate = users.find(u => u.id === userId);
+    if (userToUpdate && userToUpdate.matricule === currentUser.matricule) {
+      alert('Vous ne pouvez pas désactiver votre propre compte');
+      return;
+    }
+
+    const newStatus = !currentStatus;
+    
+    try {
+      // Mettre à jour dans localStorage (remplacer par appel API réel)
+      const storedUsers = JSON.parse(localStorage.getItem('simplon_users') || '[]');
+      const updatedUsers = storedUsers.map(user => 
+        user.id === userId ? { ...user, isActive: newStatus } : user
+      );
+      localStorage.setItem('simplon_users', JSON.stringify(updatedUsers));
+      
+      // Mettre à jour l'état local
+      setUsers(prev => prev.map(user => 
+        user.id === userId ? { ...user, isActive: newStatus } : user
+      ));
+      
+      // En production: Envoyer une requête au backend
+      // await api.updateUserStatus(userId, newStatus);
+      
+      console.log(`Utilisateur ${userId} ${newStatus ? 'activé' : 'désactivé'}`);
+    } catch (error) {
+      console.error('Erreur lors de la modification du statut:', error);
+      alert('Erreur lors de la modification du statut');
+    }
+  };
+
   const filteredUsers = users.filter(user =>
     user.nom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.prenom?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -38,218 +86,205 @@ export default function AdminUsers() {
     user.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Gère la création ou la mise à jour d'un compte
-  const handleSubmit = (e) => {
-    e.preventDefault(); // Empêche le rechargement de la page
-    const currentUsers = JSON.parse(localStorage.getItem('simplon_users') || '[]');
+  const getRoleColor = (role, isActive = true) => {
+    const baseColor = isActive ? {
+      'administrateur': 'bg-red-500/10 text-red-400 border border-red-500/20',
+      'formateur': 'bg-blue-500/10 text-blue-400 border border-blue-500/20',
+      'apprenant': 'bg-green-500/10 text-green-400 border border-green-500/20',
+      'default': 'bg-gray-500/10 text-gray-400 border border-gray-500/20'
+    }[role] || 'bg-gray-500/10 text-gray-400 border border-gray-500/20' 
+    : 'bg-gray-800/50 text-gray-500 border border-gray-700';
     
-    if (editingUser) {
-      // Logique de modification : on remplace l'objet correspondant par ID
-      const updatedUsers = currentUsers.map(u =>
-        u.id === editingUser.id ? { ...u, ...formData } : u
-      );
-      localStorage.setItem('simplon_users', JSON.stringify(updatedUsers));
-      setUsers(updatedUsers);
-    } else {
-      // Logique de création : on génère un ID unique et une date
-      const newUser = {
-        ...formData,
-        id: Date.now().toString(),
-        dateCreation: new Date().toISOString(),
-        est_actif: true
-      };
-      const updatedUsers = [...currentUsers, newUser];
-      localStorage.setItem('simplon_users', JSON.stringify(updatedUsers));
-      setUsers(updatedUsers);
-    }
-    resetForm(); // Vide le formulaire après succès
+    return baseColor;
   };
 
-  // Réinitialise les états du formulaire
-  const resetForm = () => {
-    setFormData({ nom: '', prenom: '', matricule: '', email: '', role: 'apprenant', password: '' });
-    setEditingUser(null);
-    setShowForm(false);
+  const getStatusBadge = (isActive) => {
+    return isActive 
+      ? 'bg-green-500/10 text-green-400 border border-green-500/20' 
+      : 'bg-red-500/10 text-red-400 border border-red-500/20';
   };
 
-  // Remplit le formulaire avec les données de l'utilisateur sélectionné
-  const handleEdit = (user) => {
-    setFormData({
-      nom: user.nom || '',
-      prenom: user.prenom || '',
-      matricule: user.matricule || '',
-      email: user.email || '',
-      role: user.role || 'apprenant',
-      password: '' // On ne pré-remplit jamais un mot de passe pour des raisons de sécurité
+  const countByRole = () => {
+    let stagiaires = 0;
+    let administrateurs = 0;
+    let actifs = 0;
+    let inactifs = 0;
+    
+    users.forEach(user => {
+      if (user.matricule && user.matricule.toUpperCase().startsWith('AD-')) {
+        administrateurs++;
+      } else {
+        stagiaires++;
+      }
+      
+      if (user.isActive === false) {
+        inactifs++;
+      } else {
+        actifs++;
+      }
     });
-    setEditingUser(user);
-    setShowForm(true);
+    
+    return { stagiaires, administrateurs, actifs, inactifs };
   };
 
-  // Supprime un utilisateur après confirmation
-  const handleDelete = (userId) => {
-    if (window.confirm('Voulez-vous vraiment supprimer cet utilisateur ?')) {
-      const updatedUsers = users.filter(u => u.id !== userId);
-      localStorage.setItem('simplon_users', JSON.stringify(updatedUsers));
-      setUsers(updatedUsers);
-    }
-  };
+  const roleCounts = countByRole();
 
-  // Retourne une classe CSS spécifique selon le rôle de l'utilisateur
-  const getRoleColor = (role) => {
-    switch (role) {
-      case 'administrateur': return 'bg-red-500/20 text-red-400 border border-red-500/20';
-      case 'formateur': return 'bg-blue-500/20 text-blue-400 border border-blue-500/20';
-      case 'apprenant': return 'bg-green-500/20 text-green-400 border border-green-500/20';
-      default: return 'bg-gray-500/20 text-gray-400 border border-gray-500/20';
-    }
-  };
+  // Vérifier si l'utilisateur courant peut modifier les statuts
+  const canModifyStatus = currentUser && currentUser.matricule?.startsWith('AD-');
 
   return (
-    <div className="min-h-screen bg-background-dark text-text-primary-dark flex flex-col md:flex-row">
-      {/* Sidebar - Fixe sur PC, peut être adaptée en menu mobile si nécessaire */}
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col md:flex-row">
       <AdminSidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       
-      {/* Zone de contenu principal */}
-      <main className="flex-1 p-4 md:p-8 pt-16 lg:pt-8 overflow-x-hidden">
+      <main className="flex-1 p-4 md:p-8 pt-20 lg:pt-8 overflow-x-hidden">
         
-        {/* Header : Titre et bouton d'action */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Gestion des Utilisateurs</h1>
-            <p className="text-text-secondary-dark text-sm md:text-base mt-1">Administration des accès Simplon</p>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">Gestion des Utilisateurs</h1>
+            <p className="text-gray-400 text-sm md:text-base mt-1">
+              Administration des accès Simplon {!canModifyStatus && '(Lecture seule)'}
+            </p>
           </div>
-          
         </div>
 
-        {/* Barre de Recherche responsive */}
         <div className="relative mb-8">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary-dark" size={20} />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
           <input
             type="text"
             placeholder="Rechercher par nom, email ou matricule..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-surface-dark border border-border-dark text-text-primary-dark px-12 py-3.5 rounded-2xl focus:ring-2 focus:ring-primary/50 outline-none transition-all placeholder:text-text-secondary-dark/50"
+            className="w-full bg-gray-900 border border-gray-800 text-white px-12 py-3.5 rounded-2xl focus:ring-2 focus:ring-[#CE0033]/50 outline-none transition-all placeholder:text-gray-500"
           />
         </div>
 
-        {/* Formulaire d'ajout/modification (Conditionnel) */}
-        {showForm && (
-          <div className="bg-surface-dark p-6 rounded-2xl mb-8 border border-border-dark shadow-xl animate-in fade-in slide-in-from-top-4 duration-300">
-            <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-primary">
-              {editingUser ? <Edit size={22} /> : <Plus size={22} />}
-              {editingUser ? "Mettre à jour le profil" : "Créer un nouveau compte"}
-            </h2>
-            
-            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Le champ Nom */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-text-secondary-dark ml-1">Nom *</label>
-                <input type="text" value={formData.nom} onChange={(e) => setFormData({...formData, nom: e.target.value})} className="w-full bg-background-dark border border-border-dark rounded-xl px-4 py-3 focus:border-primary outline-none transition-colors" required />
-              </div>
-              {/* Le champ Prénom */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-text-secondary-dark ml-1">Prénom *</label>
-                <input type="text" value={formData.prenom} onChange={(e) => setFormData({...formData, prenom: e.target.value})} className="w-full bg-background-dark border border-border-dark rounded-xl px-4 py-3 focus:border-primary outline-none transition-colors" required />
-              </div>
-              {/* Le champ Matricule */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-text-secondary-dark ml-1">Matricule *</label>
-                <input type="text" placeholder="ex: SIM-2024" value={formData.matricule} onChange={(e) => setFormData({...formData, matricule: e.target.value})} className="w-full bg-background-dark border border-border-dark rounded-xl px-4 py-3 focus:border-primary outline-none transition-colors" required />
-              </div>
-              {/* Le champ Email */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-text-secondary-dark ml-1">Email professionnel *</label>
-                <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full bg-background-dark border border-border-dark rounded-xl px-4 py-3 focus:border-primary outline-none transition-colors" required />
-              </div>
-              {/* Sélection du rôle */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-text-secondary-dark ml-1">Rôle Système *</label>
-                <select value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})} className="w-full bg-background-dark border border-border-dark rounded-xl px-4 py-3 focus:border-primary outline-none appearance-none cursor-pointer">
-                  <option value="apprenant">Apprenant</option>
-                  <option value="formateur">Formateur</option>
-                  <option value="administrateur">Administrateur</option>
-                </select>
-              </div>
-              {/* Le champ Mot de passe */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-text-secondary-dark ml-1">{editingUser ? 'Changer le mot de passe' : 'Mot de passe initial *'}</label>
-                <input type="password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full bg-background-dark border border-border-dark rounded-xl px-4 py-3 focus:border-primary outline-none transition-colors" required={!editingUser} />
-              </div>
-
-              {/* Actions du formulaire */}
-              <div className="md:col-span-2 flex flex-col sm:flex-row gap-3 justify-end mt-4">
-                <button type="button" onClick={resetForm} className="order-2 sm:order-1 px-8 py-3 rounded-xl font-bold text-text-secondary-dark hover:bg-white/5 transition-colors">Annuler</button>
-                <button type="submit" className="order-1 sm:order-2 bg-primary px-10 py-3 rounded-xl text-white font-bold hover:brightness-110 shadow-lg shadow-primary/20 transition-all">
-                  {editingUser ? 'Enregistrer les modifications' : 'Confirmer la création'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Section Statistiques : Grille responsive */}
+        {/* Cartes Statistiques améliorées */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard icon={<Users className="text-primary"/>} label="Total Utilisateurs" count={users.length} />
-          <StatCard icon={<User className="text-green-400"/>} label="Apprenants" count={users.filter(u => u.role === 'apprenant').length} />
-          <StatCard icon={<Shield className="text-red-400"/>} label="Administrateurs" count={users.filter(u => u.role === 'administrateur').length} />
-          <StatCard icon={<CheckCircle className="text-blue-400"/>} label="Actifs" count={users.length} />
+          <StatCard 
+            icon={<User className="text-green-400 w-5 h-5 md:w-6 md:h-6"/>} 
+            label="Stagiaires" 
+            count={roleCounts.stagiaires} 
+            badgeColor="bg-green-500/10 text-green-400"
+          />
+          <StatCard 
+            icon={<Shield className="text-red-400 w-5 h-5 md:w-6 md:h-6"/>} 
+            label="Administrateurs" 
+            count={roleCounts.administrateurs} 
+            badgeColor="bg-red-500/10 text-red-400"
+          />
+          <StatCard 
+            icon={<ToggleRight className="text-green-400 w-5 h-5 md:w-6 md:h-6"/>} 
+            label="Comptes actifs" 
+            count={roleCounts.actifs} 
+            badgeColor="bg-green-500/10 text-green-400"
+          />
+          <StatCard 
+            icon={<ToggleLeft className="text-red-400 w-5 h-5 md:w-6 md:h-6"/>} 
+            label="Comptes inactifs" 
+            count={roleCounts.inactifs} 
+            badgeColor="bg-red-500/10 text-red-400"
+          />
         </div>
 
-        {/* Tableau Responsive : Conteneur scrollable horizontalement */}
-        <div className="bg-surface-dark rounded-2xl border border-border-dark shadow-sm overflow-hidden">
+        <div className="bg-gray-900/50 rounded-2xl border border-gray-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-left border-collapse">
-              <thead className="bg-background-dark/50 border-b border-border-dark text-xs uppercase tracking-widest text-text-secondary-dark font-bold">
+              <thead className="bg-gray-900/50 border-b border-gray-800 text-xs uppercase tracking-widest text-gray-400 font-bold">
                 <tr>
-                  <th className="px-6 py-4">Utilisateur</th>
-                  <th className="px-6 py-4 hidden lg:table-cell">Matricule</th>
-                  <th className="px-6 py-4 hidden md:table-cell">Email</th>
-                  <th className="px-6 py-4">Rôle</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                  <th className="px-4 sm:px-6 py-4">UTILISATEUR</th>
+                  <th className="px-4 sm:px-6 py-4">MATRICULE</th>
+                  <th className="px-4 sm:px-6 py-4 hidden md:table-cell">EMAIL</th>
+                  <th className="px-4 sm:px-6 py-4">ROLE</th>
+                  <th className="px-4 sm:px-6 py-4">STATUT</th>
+                  <th className="px-4 sm:px-6 py-4">ACTIONS</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-dark">
-                {filteredUsers.length === 0 ? (
+              <tbody className="divide-y divide-gray-800">
+                {isLoading ? (
                   <tr>
-                    <td colSpan="5" className="px-6 py-12 text-center text-text-secondary-dark italic">
+                    <td colSpan="6" className="px-4 sm:px-6 py-12 text-center">
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#CE0033]"></div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-4 sm:px-6 py-12 text-center text-gray-500 italic">
                       {users.length === 0 ? 'La base de données est vide' : 'Aucune correspondance trouvée'}
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user) => (
-                    <tr key={user.id} className="group hover:bg-white/[0.02] transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold border border-primary/20">
-                            {user.nom.charAt(0)}{user.prenom.charAt(0)}
+                  filteredUsers.map((user) => {
+                    const isAdmin = user.matricule && user.matricule.toUpperCase().startsWith('AD-');
+                    const role = isAdmin ? 'administrateur' : 'apprenant';
+                    const isCurrentUser = currentUser && currentUser.matricule === user.matricule;
+                    
+                    return (
+                      <tr 
+                        key={user.id} 
+                        className={`group transition-colors ${!user.isActive ? 'opacity-60' : ''}`}
+                      >
+                        <td className="px-4 sm:px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${!user.isActive ? 'bg-gray-800/50' : 'bg-gray-800'}`}>
+                              {user.isActive ? 
+                                <Eye size={16} className="text-gray-400" /> : 
+                                <EyeOff size={16} className="text-gray-500" />
+                              }
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm md:text-base uppercase text-white truncate max-w-[120px] sm:max-w-none">
+                                {user.pseudo || `${user.prenom || ''} ${user.nom || ''}`.trim()}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {user.isActive ? 'Actif' : 'Inactif'}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-bold text-sm md:text-base capitalize">{user.prenom} {user.nom}</p>
-                            <p className="text-xs text-text-secondary-dark md:hidden italic">{user.matricule}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 hidden lg:table-cell font-mono text-sm text-primary">{user.matricule}</td>
-                      <td className="px-6 py-4 hidden md:table-cell text-sm text-text-secondary-dark">{user.email}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-tighter ${getRoleColor(user.role)}`}>
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => handleEdit(user)} className="p-2 md:p-2.5 text-primary hover:bg-primary/10 rounded-xl transition-all" title="Modifier">
-                            <Edit size={18} />
-                          </button>
-                          <button onClick={() => handleDelete(user.id)} className="p-2 md:p-2.5 text-red-400 hover:bg-red-400/10 rounded-xl transition-all" title="Supprimer">
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 font-mono text-sm text-[#CE0033] truncate max-w-[100px] sm:max-w-none">
+                          {user.matricule}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 hidden md:table-cell text-sm text-gray-400 truncate max-w-[200px]">
+                          {user.email}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4">
+                          <span className={`px-3 py-1 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-tighter ${getRoleColor(role, user.isActive)}`}>
+                            {isAdmin ? 'ADMIN' : 'STAGIAIRE'}
+                          </span>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4">
+                          <span className={`px-3 py-1 rounded-lg text-[10px] md:text-xs font-bold uppercase tracking-tighter ${getStatusBadge(user.isActive)}`}>
+                            {user.isActive ? 'ACTIF' : 'INACTIF'}
+                          </span>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4">
+                          {canModifyStatus && !isCurrentUser ? (
+                            <button
+                              onClick={() => toggleUserStatus(user.id, user.isActive)}
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                user.isActive 
+                                  ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20' 
+                                  : 'bg-green-500/10 text-green-400 hover:bg-green-500/20 border border-green-500/20'
+                              }`}
+                              title={user.isActive ? 'Désactiver le compte' : 'Activer le compte'}
+                            >
+                              {user.isActive ? 'Désactiver' : 'Activer'}
+                              {user.isActive ? 
+                                <ToggleLeft size={16} /> : 
+                                <ToggleRight size={16} />
+                              }
+                            </button>
+                          ) : isCurrentUser ? (
+                            <span className="text-xs text-gray-500 italic">Votre compte</span>
+                          ) : (
+                            <span className="text-xs text-gray-500 italic">Lecture seule</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -260,18 +295,22 @@ export default function AdminUsers() {
   );
 }
 
-/** * Sous-composant StatCard pour la réutilisation et la clarté 
- * @param {icon, label, count} 
- */
-function StatCard({ icon, label, count }) {
+function StatCard({ icon, label, count, badgeColor }) {
   return (
-    <div className="bg-surface-dark p-5 rounded-2xl border border-border-dark flex items-center gap-4 hover:border-primary/30 transition-all group">
-      <div className="p-3 bg-background-dark rounded-xl border border-border-dark group-hover:scale-110 transition-transform">
+    <div className="bg-gray-900/50 p-4 sm:p-5 rounded-2xl border border-gray-800 flex items-center gap-3 sm:gap-4 hover:border-[#CE0033]/30 transition-all group">
+      <div className="p-2 sm:p-3 bg-gray-800 rounded-xl border border-gray-800 group-hover:scale-110 transition-transform flex-shrink-0">
         {icon}
       </div>
-      <div>
-        <p className="text-2xl font-black text-text-primary-dark">{count}</p>
-        <p className="text-[10px] md:text-xs font-bold text-text-secondary-dark uppercase tracking-widest">{label}</p>
+      <div className="flex-1 min-w-0">
+        <p className="text-xl sm:text-2xl md:text-3xl font-black text-white truncate">
+          {count}
+        </p>
+        <p className="text-[9px] xs:text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest truncate">
+          {label}
+        </p>
+      </div>
+      <div className={`hidden xs:flex ml-auto px-2 py-1 sm:px-3 sm:py-1 rounded-lg text-[9px] xs:text-[10px] sm:text-xs font-bold border ${badgeColor} border-current/20 whitespace-nowrap flex-shrink-0`}>
+        {label}
       </div>
     </div>
   );
