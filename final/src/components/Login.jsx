@@ -1,218 +1,411 @@
 import React, { useState, useEffect } from "react";
+import { Loader2, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, Server } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Menu, X } from "lucide-react";
 
-const Home = () => {
+export default function Login() {
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [backendStatus, setBackendStatus] = useState("checking");
+  const [debugMode, setDebugMode] = useState(false);
+
   const navigate = useNavigate();
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Gestion du scroll pour le header dynamique
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  const backgroundImage =
+    "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=2072&auto=format&fit=crop";
 
-  // Animation d'apparition (Reveal)
+  // Vérifier la connexion au backend au démarrage
   useEffect(() => {
-    const reveal = () => {
-      const reveals = document.querySelectorAll(".reveal");
-      reveals.forEach((el) => {
-        const windowHeight = window.innerHeight;
-        const revealTop = el.getBoundingClientRect().top;
-        if (revealTop < windowHeight - 100) {
-          el.classList.add("opacity-100", "translate-y-0");
+    const checkBackend = async () => {
+      try {
+        console.log("🔍 Vérification du backend...");
+        const response = await fetch("http://localhost:5001/api/health");
+        if (response.ok) {
+          const data = await response.json();
+          console.log("✅ Backend connecté:", data);
+          setBackendStatus("connected");
+          setSuccess(`Backend connecté (${data.users_count} utilisateurs)`);
+          setTimeout(() => setSuccess(""), 3000);
+        } else {
+          setBackendStatus("error");
+          console.error("❌ Backend erreur:", response.status);
         }
-      });
+      } catch (err) {
+        setBackendStatus("error");
+        console.error("❌ Impossible de joindre le backend:", err);
+      }
     };
-    window.addEventListener("scroll", reveal);
-    reveal(); 
-    return () => window.removeEventListener("scroll", reveal);
-  }, []);
 
-  const revealClass = "reveal opacity-0 translate-y-10 transition-all duration-1000 ease-out";
-  const bgImage = "https://images.unsplash.com/photo-1550745165-9bc0b252726f?q=80&w=2070&auto=format&fit=crop";
+    checkBackend();
+
+    // Vérifier si déjà connecté
+    const isAuth = localStorage.getItem("isAuthenticated");
+    const userData = localStorage.getItem("current_user");
+
+    if (isAuth === "true" && userData) {
+      try {
+        const user = JSON.parse(userData);
+        console.log("👤 Utilisateur déjà connecté:", user.pseudo);
+
+        // Redirection automatique
+        if (user.role === "admin" || user.matricule?.startsWith("AD-")) {
+          navigate("/admin-dashboard");
+        } else {
+          navigate("/dashboard");
+        }
+      } catch (e) {
+        console.error("❌ Erreur parsing user data:", e);
+        localStorage.removeItem("current_user");
+        localStorage.removeItem("isAuthenticated");
+      }
+    }
+  }, [navigate]);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+
+    // Validation
+    if (!identifier.trim()) {
+      setError("Veuillez entrer votre email ou pseudo");
+      return;
+    }
+
+    if (!password.trim()) {
+      setError("Veuillez entrer votre mot de passe");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    console.log("🔄 Tentative de connexion...");
+    console.log("Identifiant:", identifier);
+    console.log("URL: http://localhost:5001/api/login");
+
+    try {
+      const startTime = Date.now();
+
+      const response = await fetch("http://localhost:5001/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({
+          identifier: identifier.trim(),
+          password: password.trim()
+        })
+      });
+
+      const responseTime = Date.now() - startTime;
+      console.log(`⏱️ Temps de réponse: ${responseTime}ms`);
+      console.log("📊 Status:", response.status, response.statusText);
+
+      // Lire la réponse
+      const responseText = await response.text();
+      console.log("📄 Réponse brute:", responseText);
+
+      let data;
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (parseError) {
+        console.error("❌ Erreur parsing JSON:", parseError);
+        throw new Error("Le serveur a retourné une réponse invalide");
+      }
+
+      if (!response.ok) {
+        const errorMessage = data.error || `Erreur ${response.status}: ${response.statusText}`;
+        console.error("❌ Erreur serveur:", errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      console.log("✅ Connexion réussie!");
+      console.log("👤 Utilisateur:", data.user);
+      console.log("📍 Redirection:", data.redirectTo);
+
+      // Stocker les données utilisateur
+      if (data.user) {
+        localStorage.setItem("current_user", JSON.stringify(data.user));
+        localStorage.setItem("isAuthenticated", "true");
+        console.log("💾 Données sauvegardées");
+      }
+
+      // Afficher un message de succès
+      setSuccess(`Connexion réussie! Bienvenue ${data.user?.pseudo || ""}`);
+
+      // Redirection après un court délai
+      setTimeout(() => {
+        if (data.redirectTo) {
+          navigate(data.redirectTo);
+        } else {
+          // Fallback selon le rôle
+          const userRole = data.user?.role;
+          const matricule = data.user?.matricule;
+
+          if (userRole === "admin" || (matricule && matricule.startsWith("AD-"))) {
+            navigate("/admin-dashboard");
+          } else {
+            navigate("/dashboard");
+          }
+        }
+      }, 1500);
+
+    } catch (err) {
+      console.error("❌ Erreur complète:", err);
+
+      // Messages d'erreur personnalisés
+      if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
+        setError(
+          "Impossible de se connecter au serveur. Vérifiez que:\n" +
+          "1. Le backend est démarré (port 5001)\n" +
+          "2. Aucun blocage CORS\n" +
+          "3. Le serveur est accessible"
+        );
+      } else if (err.message.includes("JSON")) {
+        setError("Le serveur a retourné une réponse invalide");
+      } else if (err.message.includes("401") || err.message.includes("incorrect")) {
+        setError("Identifiant ou mot de passe incorrect");
+      } else {
+        setError(err.message || "Une erreur est survenue lors de la connexion");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const testBackendConnection = async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      console.log("🔍 Test de connexion au backend...");
+      const response = await fetch("http://localhost:5001/api/health");
+      const data = await response.json();
+
+      if (response.ok) {
+        const message = `✅ Backend OK!\nUtilisateurs: ${data.users_count}\nProjets: ${data.projects_count}\nTéléchargements: ${data.downloads_count}`;
+        setSuccess(message);
+        setBackendStatus("connected");
+        console.log("📊 Stats backend:", data);
+      } else {
+        throw new Error(`Erreur ${response.status}: ${response.statusText}`);
+      }
+    } catch (err) {
+      console.error("❌ Test échoué:", err);
+      setError("Impossible de joindre le backend sur le port 5001");
+      setBackendStatus("error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearStorage = () => {
+    localStorage.clear();
+    setSuccess("LocalStorage vidé avec succès");
+    console.log("🧹 LocalStorage vidé");
+    setTimeout(() => {
+      setSuccess("");
+      window.location.reload();
+    }, 1500);
+  };
+
+  const showDebugInfo = () => {
+    console.log("=== DEBUG INFO ===");
+    console.log("Identifier:", identifier);
+    console.log("Password:", password ? "***" : "(vide)");
+    console.log("Backend Status:", backendStatus);
+    console.log("LocalStorage current_user:", localStorage.getItem("current_user"));
+    console.log("LocalStorage isAuthenticated:", localStorage.getItem("isAuthenticated"));
+    console.log("=== END DEBUG ===");
+    setDebugMode(!debugMode);
+  };
+
+  // Indicateur de statut backend
+  const getBackendStatusIcon = () => {
+    switch (backendStatus) {
+      case "connected":
+        return <CheckCircle2 size={14} className="text-green-500" />;
+      case "error":
+        return <AlertCircle size={14} className="text-red-500" />;
+      default:
+        return <Server size={14} className="text-yellow-500" />;
+    }
+  };
 
   return (
-    <div className="relative min-h-screen bg-[#0A0A0B] text-white font-sans overflow-x-hidden selection:bg-[#CE0033] selection:text-white">
-      
-      {/* 1. ARRIÈRE-PLAN DYNAMIQUE */}
-      <div className="fixed inset-0 z-0">
-        <div 
-          className="absolute inset-0 opacity-10"
-          style={{ backgroundImage: `url(${bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
-        />
-        <div className="absolute top-[-5%] left-[-10%] w-[80%] md:w-[50%] h-[40%] bg-[#CE0033]/15 rounded-full blur-[80px] md:blur-[120px]" />
-        <div className="absolute bottom-[5%] right-[-5%] w-[70%] md:w-[40%] h-[30%] bg-blue-600/10 rounded-full blur-[80px] md:blur-[100px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0A0A0B]/90 via-[#0A0A0B] to-[#0A0A0B]" />
-      </div>
+    <div
+      className="min-h-screen w-full flex justify-center items-center relative p-4"
+      style={{
+        backgroundImage: `url(${backgroundImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
+      {/* Overlay sombre */}
+      <div className="absolute inset-0 z-0 bg-black/75 backdrop-blur-sm"></div>
 
-      {/* 2. BARRE DE NAVIGATION (Modifiée pour opacité mobile) */}
-      <header className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 px-4 md:px-6 ${
-        scrolled 
-          ? "py-4 bg-[#0A0A0B]/95 backdrop-blur-xl border-b border-white/5" 
-          : "py-6 bg-[#0A0A0B] md:bg-transparent md:py-8"
-      }`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer group z-50" onClick={() => navigate("/")}>
-            <div className="w-10 h-10 md:w-11 md:h-11 bg-[#CE0033] flex items-center justify-center rounded-lg shadow-lg shadow-[#CE0033]/20 group-hover:rotate-12 transition-transform font-black text-xl md:text-2xl">
-              S
-            </div>
-            <h1 className="text-xl md:text-2xl font-black tracking-tighter uppercase">
-              SIMPLON <span className="text-[#CE0033]">HUB</span>
-            </h1>
-          </div>
-
-          {/* Menu Desktop */}
-          <nav className="hidden md:flex items-center gap-8">
-            <button onClick={() => navigate("/activation")} className="text-xs font-bold tracking-widest text-gray-400 hover:text-white transition uppercase">
-              Activer Compte
-            </button>
-            <button onClick={() => navigate("/login")} className="px-10 py-4 text-xs font-black bg-[#CE0033] rounded-full hover:bg-red-700 transition shadow-xl shadow-[#CE0033]/30 uppercase tracking-[0.2em] active:scale-95">
+      {/* Carte de connexion */}
+      <div className="w-full max-w-[420px] z-10 animate-in fade-in zoom-in duration-300">
+        <form
+          onSubmit={handleLogin}
+          className="p-8 md:p-10 rounded-2xl shadow-2xl border border-white/10"
+          style={{ background: "rgba(20, 20, 20, 0.95)" }}
+        >
+          {/* En-tête */}
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold tracking-tight mb-2 text-[#CE0033]">
               Connexion
-            </button>
-          </nav>
-
-          {/* Bouton Burger Mobile */}
-          <button className="md:hidden z-50 p-2" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            {mobileMenuOpen ? <X size={30} /> : <Menu size={30} />}
-          </button>
-        </div>
-
-        {/* Overlay Menu Mobile */}
-        <div className={`fixed inset-0 bg-[#0A0A0B] transition-transform duration-500 flex flex-col items-center justify-center gap-8 md:hidden ${mobileMenuOpen ? "translate-x-0" : "translate-x-full"}`}>
-          <button onClick={() => {navigate("/activation"); setMobileMenuOpen(false)}} className="text-2xl font-black uppercase tracking-widest">Activer Compte</button>
-          <button onClick={() => {navigate("/login"); setMobileMenuOpen(false)}} className="px-12 py-5 bg-[#CE0033] rounded-full text-xl font-black uppercase tracking-widest">Connexion</button>
-          <button onClick={() => {navigate("/explore"); setMobileMenuOpen(false)}} className="text-gray-400 uppercase tracking-widest font-bold">Explorer</button>
-        </div>
-      </header>
-
-      {/* 3. CONTENU PRINCIPAL */}
-      <div className="relative z-10 w-full max-w-6xl mx-auto px-6 pt-32 md:pt-48 pb-20">
-
-        {/* HERO SECTION */}
-        <section className={`flex flex-col items-center text-center ${revealClass}`}>
-          <div className="inline-flex items-center gap-3 px-5 py-2 rounded-full border border-white/10 bg-white/5 text-[9px] md:text-xs font-black uppercase tracking-[0.2em] mb-8">
-            <span className="w-2 h-2 bg-[#CE0033] rounded-full animate-pulse" />
-            Simplon Côte d'Ivoire
-          </div>
-          
-          <h1 className="text-4xl xs:text-5xl sm:text-6xl md:text-[100px] font-black tracking-tighter leading-[1.1] md:leading-[0.85] mb-8">
-            Vos Codes, <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#CE0033] via-red-500 to-orange-500">
-              Notre Héritage.
-            </span>
-          </h1>
-
-          <p className="text-gray-400 max-w-2xl text-base md:text-xl leading-relaxed mb-12 font-medium">
-            La plateforme officielle de centralisation des projets de Simplon CI. 
-            Valorisez votre expertise technique auprès de la communauté.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-            <button onClick={() => navigate("/login")} className="group relative px-10 py-5 bg-white text-black text-xs font-black uppercase tracking-[0.2em] overflow-hidden transition-all active:scale-95">
-              <span className="relative z-10 group-hover:text-white transition-colors">Commencer</span>
-              <div className="absolute inset-0 bg-[#CE0033] translate-x-full group-hover:translate-x-0 transition-transform duration-500" />
-            </button>
-            <button onClick={() => navigate("/explore")} className="px-10 py-5 border border-white/20 hover:border-[#CE0033] text-xs font-black uppercase tracking-[0.2em] transition-all hover:bg-white/5 active:scale-95">
-              Explorer
-            </button>
-          </div>
-        </section>
-
-        {/* SECTION CHIFFRES */}
-        <section className={`grid grid-cols-2 md:grid-cols-4 gap-6 mt-32 md:mt-56 py-12 border-y border-white/5 bg-white/[0.01] rounded-[2rem] ${revealClass}`}>
-          {[
-            { label: "Adoption", val: "80%" },
-            { label: "Projets", val: "300+" },
-            { label: "Vitesse", val: "<15s" },
-            { label: "Partage", val: "70%" },
-          ].map((stat, i) => (
-            <div key={i} className="text-center">
-              <div className="text-3xl md:text-6xl font-black text-[#CE0033] mb-1 italic leading-none">{stat.val}</div>
-              <div className="text-[9px] uppercase tracking-widest text-gray-600 font-black">{stat.label}</div>
-            </div>
-          ))}
-        </section>
-
-        {/* SECTION POURQUOI CENTRALISER */}
-        <section className={`mt-32 md:mt-56 ${revealClass}`}>
-          <div className="flex flex-col md:flex-row items-center justify-between mb-16 gap-10">
-            <div className="space-y-4 text-center md:text-left">
-               <h2 className="text-4xl md:text-7xl font-black tracking-tighter uppercase italic">
-                 Pourquoi <br/><span className="text-[#CE0033]">Centraliser ?</span>
-               </h2>
-               <div className="w-16 h-1.5 bg-[#CE0033] mx-auto md:mx-0" />
-            </div>
-            <p className="text-gray-500 max-w-sm text-sm md:text-lg italic border-l-0 md:border-l-2 border-[#CE0033] md:pl-8 leading-relaxed font-medium text-center md:text-left">
-              "Fédérer les talents pour construire une base de connaissances durable."
-            </p>
+            </h1>
+            <p className="text-gray-400 text-sm mb-2">Simplon Code Hub</p>
+            
+            {/* Indicateur backend */}
+           
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { title: "Capitalisation", desc: "Base de ressources réutilisables pour les futurs stagiaires.", tag: "Knowledge" },
-              { title: "Visibilité", desc: "Valorisation de vos travaux pour booster votre employabilité.", tag: "Showcase" },
-              { title: "Partage", desc: "Échange de connaissances techniques entre toutes les cohortes.", tag: "Network" }
-            ].map((item, i) => (
-              <div key={i} className="group p-8 md:p-12 bg-[#111113] border border-white/5 hover:border-[#CE0033]/40 transition-all rounded-[2rem]">
-                <div className="text-[10px] text-[#CE0033] font-black uppercase tracking-[0.2em] mb-6">{item.tag}</div>
-                <h3 className="text-2xl font-black mb-3 italic tracking-tight uppercase">{item.title}</h3>
-                <p className="text-gray-500 text-sm md:text-base leading-relaxed mb-6">{item.desc}</p>
-                <div className="w-full h-px bg-white/5 group-hover:bg-[#CE0033] transition-colors" />
+          {/* Messages d'erreur */}
+          {error && (
+            <div className="mb-6 p-4 rounded-xl text-red-400 bg-red-500/10 border border-red-500/20 text-sm">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
+                <div className="whitespace-pre-line">{error}</div>
               </div>
-            ))}
-          </div>
-        </section>
+            </div>
+          )}
 
-        {/* CTA FINAL */}
-        <section className={`mt-32 md:mt-56 py-20 px-6 bg-gradient-to-br from-[#CE0033] to-red-950 rounded-[2.5rem] md:rounded-[4rem] text-center relative overflow-hidden ${revealClass}`}>
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-[80px]" />
-          <h2 className="text-4xl md:text-7xl font-black mb-10 tracking-tighter uppercase leading-tight italic">Prêt à marquer <br className="hidden md:block"/> l'histoire ?</h2>
-          <button 
-            onClick={() => navigate("/login")}
-            className="w-full sm:w-auto px-12 py-6 bg-white text-[#CE0033] font-black uppercase text-xs tracking-widest rounded-full hover:scale-105 transition-transform shadow-2xl active:scale-95"
-          >
-            Ouvrir une Session
-          </button>
-        </section>
-
-        {/* FOOTER */}
-        <footer className={`mt-32 md:mt-60 bg-[#0D0D0F]/80 border-t border-white/5 pt-20 pb-10 ${revealClass}`}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-12 mb-16 text-center sm:text-left">
-            <div className="space-y-6">
-              <div className="flex items-center justify-center sm:justify-start gap-4">
-                <div className="w-9 h-9 bg-[#CE0033] flex items-center justify-center rounded-lg font-black text-lg">S</div>
-                <h1 className="text-xl font-black tracking-tighter uppercase italic">SIMPLON HUB</h1>
+          {/* Messages de succès */}
+          {success && (
+            <div className="mb-6 p-4 rounded-xl text-green-400 bg-green-500/10 border border-green-500/20 text-sm">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 size={18} className="mt-0.5 flex-shrink-0" />
+                <div className="whitespace-pre-line">{success}</div>
               </div>
-              <p className="text-gray-600 text-xs leading-relaxed uppercase font-bold tracking-tight">Centralisation & Excellence au service de Simplon Côte d'Ivoire.</p>
+            </div>
+          )}
+
+          {/* Champs de formulaire */}
+          <div className="space-y-5">
+            {/* Identifiant */}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
+                Email ou Pseudo
+              </label>
+              <input
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                className="w-full bg-black/50 border border-white/10 p-3.5 rounded-xl text-white outline-none focus:border-[#CE0033] transition-colors disabled:opacity-50"
+                placeholder="exemple@simplon.com ou monpseudo"
+                required
+                disabled={loading}
+              />
             </div>
 
-            {['Navigation', 'Support', 'Contact'].map((cat, idx) => (
-              <div key={idx}>
-                <h4 className="text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-white">{cat}</h4>
-                <ul className="space-y-3 text-gray-600 text-xs font-bold uppercase tracking-tighter">
-                  {cat === 'Navigation' && ['Accueil', 'Explorer', 'Classement'].map(i => <li key={i} className="hover:text-[#CE0033] transition-colors cursor-pointer">{i}</li>)}
-                  {cat === 'Support' && ['Documentation', 'Github', 'Guide'].map(i => <li key={i} className="hover:text-white transition-colors cursor-pointer">{i}</li>)}
-                  {cat === 'Contact' && <li className="text-[#CE0033] italic">contact@simplon.ci</li>}
-                </ul>
+            {/* Mot de passe */}
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">
+                Mot de passe
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-black/50 border border-white/10 p-3.5 rounded-xl text-white outline-none focus:border-[#CE0033] transition-colors disabled:opacity-50"
+                  placeholder="••••••••"
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors"
+                  disabled={loading}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
-            ))}
-          </div>
-          
-          <div className="pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 text-center">
-            <p className="text-[9px] text-gray-600 uppercase tracking-[0.3em] font-black">© 2026 Simplon Côte d'Ivoire</p>
-            <div className="flex gap-8 text-[9px] font-black uppercase tracking-widest text-gray-700">
-              <span className="hover:text-white cursor-pointer transition-colors">Confidentialité</span>
-              <span className="hover:text-white cursor-pointer transition-colors">Mentions Légales</span>
             </div>
-          </div>
-        </footer>
 
+            {/* Bouton de connexion */}
+            <button
+              type="submit"
+              disabled={loading || !identifier.trim() || !password.trim()}
+              className="w-full py-4 rounded-xl font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed mt-4 transition-all duration-300 hover:bg-[#A50029] hover:scale-[1.02] active:scale-[0.98]"
+              style={{
+                background: loading || !identifier.trim() || !password.trim()
+                  ? "#555"
+                  : "#CE0033"
+              }}
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <Loader2 className="animate-spin" size={20} />
+                  Connexion en cours...
+                </span>
+              ) : (
+                "Se connecter"
+              )}
+            </button>
+          </div>
+
+          {/* Liens et outils */}
+          <div className="mt-8 pt-6 border-t border-white/5 text-center flex flex-col gap-4">
+            {/* Lien activation */}
+            <button
+              type="button"
+              onClick={() => navigate("/activation")}
+              className="text-sm text-gray-400 hover:text-[#CE0033] transition-colors disabled:opacity-30"
+              disabled={loading}
+            >
+              Pas encore de compte ?{" "}
+              <span className="font-bold underline">Activer l'accès</span>
+            </button>
+
+            {/* Retour accueil */}
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="text-xs text-gray-500 hover:text-white flex items-center justify-center gap-1 transition-colors disabled:opacity-30"
+              disabled={loading}
+            >
+              <ArrowLeft size={12} /> Retour à l'accueil
+            </button>
+
+           
+
+            {/* Info debug mode */}
+            {debugMode && (
+              <div className="mt-2 p-3 bg-gray-900/50 rounded-lg text-left">
+                <p className="text-xs text-gray-400 font-mono">
+                  <strong>Identifier:</strong> {identifier}<br/>
+                  <strong>Backend:</strong> {backendStatus}<br/>
+                  <strong>LocalStorage:</strong> {localStorage.getItem("isAuthenticated") ? "OK" : "Empty"}
+                </p>
+                <button
+                  onClick={() => navigator.clipboard.writeText(JSON.stringify({
+                    identifier,
+                    backendStatus,
+                    storage: {
+                      current_user: localStorage.getItem("current_user"),
+                      isAuthenticated: localStorage.getItem("isAuthenticated")
+                    }
+                  }))}
+                  className="text-xs text-gray-500 hover:text-gray-300 mt-2"
+                >
+                  Copier les infos
+                </button>
+              </div>
+            )}
+          </div>
+        </form>
+
+       
       </div>
     </div>
   );
-};
-
-export default Home;
+}
